@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "OreSat Reaction Wheel Firmware"
+
+menu "Reaction wheel application"
+
+choice RW_APPLICATION
+	prompt "Application image"
+	default RW_APP_PRODUCTION
+	help
+	  Select the firmware application entry point to compile.
+
+	  Exactly one option is active. Production firmware, bring-up tests,
+	  and experiment applications each provide their own main() function
+	  and cannot be linked into the same image.
+
+config RW_APP_PRODUCTION
+	bool "Production firmware"
+	help
+	  Build the normal reaction-wheel firmware using src/main.c.
+
+config RW_APP_TEST_CALIBRATION
+	bool "Calibration bring-up test"
+	help
+	  Build tests/bringup/testCalibration.c.
+
+config RW_APP_TEST_CURRENT_PREPROCESS
+	bool "Current preprocessing bring-up test"
+	help
+	  Build tests/bringup/testCurrentPreprocess.c.
+
+config RW_APP_TEST_DIRECT_RAMP
+	bool "Direct-ramp integration test"
+	help
+	  Build tests/bringup/testDirectRamp.c.
+
+config RW_APP_TEST_ENCODER
+	bool "Encoder bring-up test"
+	help
+	  Build tests/bringup/testEncoder.c.
+
+config RW_APP_TEST_HAL
+	bool "HAL bring-up test"
+	help
+	  Build tests/bringup/testHAL.c.
+
+config RW_APP_TEST_PWM
+	bool "PWM bring-up test"
+	help
+	  Build tests/bringup/testPWM.c.
+
+	  This image directly exercises the inverter PWM hardware and must only
+	  be run with appropriate bench restraints and supply-current limits.
+
+config RW_APP_EXPERIMENT_DYNAMIC_RESPONSE
+	bool "Dynamic-response experiment"
+	help
+	  Build tests/experiments/DynamicResponseTest.c.
+
+config RW_APP_EXPERIMENT_POWER_RIPPLE
+	bool "Power and ripple experiment"
+	help
+	  Build tests/experiments/PowerRippleTest.c.
+
+config RW_APP_EXPERIMENT_THERMAL_SOAK
+	bool "Thermal-soak experiment"
+	help
+	  Build tests/experiments/ThermalSoakTest.c.
+
+config RW_APP_EXPERIMENT_TORQUE_SPEED
+	bool "Torque-speed experiment"
+	help
+	  Build tests/experiments/TorqueSpeedTest.c.
+
+endchoice
+
+endmenu
+
+menu "Reaction wheel communication"
+
+config RW_CAN_COMMS
+	bool "Enable CAN communication integration"
+	default n
+	help
+	  Compile src/comms/CanComms.c.
+
+	  Leave this disabled until CAN and the intended Object Dictionary
+	  integration are enabled and validated.
+
+endmenu
+
+source "Kconfig.zephyr"

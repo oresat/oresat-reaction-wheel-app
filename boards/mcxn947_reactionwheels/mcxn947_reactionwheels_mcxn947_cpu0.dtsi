@@ -1,0 +1,141 @@
+/*
+ * Copyright 2024 NXP
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * This is the top-level devicetree file for the CPU0 core.
+ * It enables all the peripherals required for your application.
+ */
+/dts-v1/;
+
+#include <nxp/nxp_mcxn94x.dtsi>
+#include "mcxn947_reactionwheels.dtsi"
+
+/ {
+	/* Disable the second CPU core */
+	cpus {
+		/delete-node/ cpu@1;
+	};
+
+	/* Define the default peripherals for Zephyr */
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash;
+		zephyr,flash-controller = &fmu;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,uart-mcumgr = &flexcomm4_lpuart4;
+		zephyr,console = &flexcomm4_lpuart4;
+		zephyr,shell-uart = &flexcomm4_lpuart4;
+		zephyr,canbus = &flexcan0;
+		zephyr,code-cpu1-partition = &slot1_partition;
+	};
+
+	/* Define common aliases */
+    aliases {
+        watchdog0 = &wwdt0;
+        pwm-a = &flexpwm1_pwm3; /* Motor Phase A */
+        pwm-b = &flexpwm1_pwm2; /* Motor Phase B */
+        pwm-c = &flexpwm1_pwm1; /* Motor Phase C */
+        rtc = &rtc;
+		adc0 = &lpadc0;
+		adc1 = &lpadc1;
+    };
+};
+
+/* Define the SRAM region for this core */
+&sram0 {
+	compatible = "mmio-sram";
+	reg = <0x20000000 DT_SIZE_K(320)>;
+};
+
+/* --- Enable GPIO Ports --- */
+/* We enable all ports that have pins defined in your pinctrl file */
+&gpio0 {
+	status = "okay";
+};
+&gpio1 {
+	status = "okay";
+};
+&gpio2 {
+	status = "okay";
+};
+&gpio3 {
+	status = "okay";
+};
+&gpio4 {
+	status = "okay";
+};
+
+/* --- Enable Board-Specific Hardware --- */
+
+&led_green {
+	status = "okay";
+};
+
+&edma0 {
+	status = "okay"; // DMA is needed for many peripherals
+};
+
+/* --- Enable Peripherals --- */
+
+/* I2C (Flexcomm 0) */
+&flexcomm0 {
+	status = "okay";
+};
+&flexcomm0_lpi2c0 {
+	status = "okay";
+};
+
+/* SPI (Flexcomm 3) */
+&flexcomm3 {
+	status = "okay";
+};
+&flexcomm3_lpspi3 {
+	status = "okay";
+};
+
+/* Console UART (Flexcomm 4) */
+&flexcomm4 {
+	status = "okay";
+};
+
+&flexcomm4_lpuart4 {
+	status = "okay";
+};
+
+&flexpwm1_pwm1 {
+    status = "okay";
+};
+
+&flexpwm1_pwm2 {
+    status = "okay";
+};
+
+&flexpwm1_pwm3 {
+    status = "okay";
+};
+
+/* CAN (FlexCAN 0) */
+&flexcan0 {
+	status = "okay";
+};
+
+&vref {
+    status = "okay";
+};
+
+/* ADC (LPADC 0) */
+&lpadc0 {
+	status = "okay";
+};
+
+/* ADC (LPADC 1) */
+&lpadc1 {
+	status = "okay";
+};
+
+&enet {
+    status = "disabled";
+};

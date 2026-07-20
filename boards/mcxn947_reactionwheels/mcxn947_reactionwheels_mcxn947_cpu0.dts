@@ -1,0 +1,10 @@
+/dts-v1/;
+
+#include "mcxn947_reactionwheels_mcxn947_cpu0.dtsi"
+#include "mcxn947_reactionwheels-pinctrl.dtsi"
+#include "mcxn947_reactionwheels.dtsi"
+
+/ {
+	model = "NXP MCXN947 Reaction Wheel Control Board";
+	compatible = "nxp,mcxn947", "nxp,mcx";
+};

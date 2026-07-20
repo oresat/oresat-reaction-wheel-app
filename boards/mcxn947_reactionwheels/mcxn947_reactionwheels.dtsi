@@ -1,0 +1,143 @@
+/*
+ * Copyright 2024 NXP
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include "mcxn947_reactionwheels-pinctrl.dtsi"
+#include <zephyr/dt-bindings/i2c/i2c.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+	aliases{
+		led0 = &led_green;
+	};
+
+	gpio_leds {
+		compatible = "gpio-leds";
+		led_green: led_green {
+			gpios = <&gpio3 0 GPIO_ACTIVE_HIGH>;
+			label = "Green LED";
+		};
+	};
+};
+
+&pinmux_xtal48m {
+	pinctrl-0 = <&pinmux_xtal48m>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&flexcomm3_lpspi3 {
+    pinctrl-0 = <&pinmux_flexcomm3_lpspi>;
+    pinctrl-names = "default";
+    status = "okay";
+
+    cs-gpios = <&gpio1 3 GPIO_ACTIVE_LOW>;
+
+    encoder: encoder@0 {
+        compatible = "vnd,spi-device";    /* <--- THIS IS THE MAGIC KEY */
+        reg = <0>; /* CS pin 0 */
+        spi-max-frequency = <10000000>; /* 10 MHz */
+    };
+};
+
+&flexcomm4_lpuart4 {
+	current-speed = <921600>;
+	pinctrl-0 = <&pinmux_flexcomm4_lpuart>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&flexcomm0_lpi2c0 {
+	pinctrl-0 = <&pinmux_flexcomm0_lpi2c>;
+	pinctrl-names = "default";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	status = "okay";
+};
+
+&os_timer {
+	status = "disabled";
+};
+
+&systick {
+	status = "okay";
+};
+
+&sram {
+	sramg: memory@20050000 {
+		compatible = "mmio-sram";
+		reg = <0x20050000 DT_SIZE_K(64)>;
+	};
+	sramh: memory@20060000 {
+		compatible = "mmio-sram";
+		reg = <0x20060000 DT_SIZE_K(32)>;
+	};
+};
+
+&flash {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/*
+		 * Partition sizes must be aligned
+		 * to the flash memory sector size of 8KB.
+		 */
+		boot_partition: partition@0 {
+			label = "mcuboot";
+			reg = <0x00000000 DT_SIZE_K(80)>;
+		};
+		slot0_partition: partition@14000 {
+			label = "image-0";
+			reg = <0x00014000 DT_SIZE_K(984)>;
+		};
+		slot1_partition: partition@10A000 {
+			label = "image-1";
+			reg = <0x0010A000 DT_SIZE_K(968)>;
+		};
+		storage_partition: partition@1FC000 {
+			label = "storage";
+			reg = <0x001FC000 DT_SIZE_K(16)>;
+		};
+	};
+};
+
+/* Submodule 3 = Phase A (Channels 6/7) */
+&flexpwm1_pwm3 {
+    status = "okay";
+    pinctrl-0 = <&pinmux_flexpwm1_pwm3>;
+    pinctrl-names = "default";
+};
+
+/* Submodule 2 = Phase B (Channels 4/5) */
+&flexpwm1_pwm2 {
+    status = "okay";
+    pinctrl-0 = <&pinmux_flexpwm1_pwm2>;
+    pinctrl-names = "default";
+};
+
+/* Submodule 1 = Phase C (Channels 2/3) */
+&flexpwm1_pwm1 {
+    status = "okay";
+    pinctrl-0 = <&pinmux_flexpwm1_pwm1>;
+    pinctrl-names = "default";
+};
+
+&lpadc0 {
+	pinctrl-0 = <&pinmux_lpadc0>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&lpadc1 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_lpadc1>;
+	pinctrl-names = "default";
+};
+
+&flexcan0 {
+	pinctrl-0 = <&pinmux_flexcan0>;
+	pinctrl-names = "default";
+};

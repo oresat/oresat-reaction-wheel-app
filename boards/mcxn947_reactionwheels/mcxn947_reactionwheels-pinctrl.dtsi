@@ -1,0 +1,147 @@
+/*
+ * Copyright 2025 NXP
+ * All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#include <nxp/mcx/MCXN947VDF-pinctrl.h>
+
+&pinctrl {
+    pinmux_flexcan0: flexcan0 {
+        group0 {
+            pinmux = <CAN0_TXD_PIO1_10>,    /* CAN TX */
+                     <CAN0_RXD_PIO1_11>;    /* CAN RX */
+            drive-strength = "low";
+            slew-rate = "fast";
+            input-enable;
+        };
+    };
+
+    pinmux_flexcomm4_lpuart: flexcomm4_lpuart {
+        group0 {
+            pinmux = <FC4_P0_PIO1_8>,           /* ISP UART RX */
+                     <FC4_P1_PIO1_9>;           /* ISP UART TX */
+            drive-strength = "low";
+            slew-rate = "fast";
+            input-enable;
+        };
+    };
+
+    pinmux_flexcomm3_lpspi: flexcomm3_lpspi {
+        group0 {
+            pinmux = <FC3_P1_PIO1_1>,           /* SCK  (SCK) */
+                     <FC3_P0_PIO1_0>,           /* MOSI (SDO) */
+                     <FC3_P2_PIO1_2>,           /* MISO (SDI) */
+                     <FC3_P3_PIO1_3>;           /* SPI nCS */
+            drive-strength = "low";
+            slew-rate = "fast";
+            input-enable;
+        };
+    };
+
+    /* Phase A (Submodule 3) */
+    pinmux_flexpwm1_pwm3: flexpwm1_pwm3 {
+        group0 {
+            pinmux = <PWM1_A3_PIO2_0>,          /* Phase B High */
+                     <PWM1_B3_PIO2_1>;          /* Phase B Low */
+            drive-strength = "low";
+            slew-rate = "fast";
+            input-enable;
+        };
+    };
+
+    /* Phase B (Submodule 2) */
+    pinmux_flexpwm1_pwm2: flexpwm1_pwm2 {
+        group0 {
+            pinmux = <PWM1_A2_PIO2_2>,          /* Phase B High */
+                     <PWM1_B2_PIO2_3>;          /* Phase B Low */
+            drive-strength = "low";
+            slew-rate = "fast";
+            input-enable;
+        };
+    };
+
+    /* Phase C (Submodule 1) */
+    pinmux_flexpwm1_pwm1: flexpwm1_pwm1 {
+        group0 {
+            pinmux = <PWM1_A1_PIO2_4>,          /* Phase C High */
+                     <PWM1_B1_PIO2_5>;          /* Phase C Low */
+            drive-strength = "low";
+            slew-rate = "fast";
+            input-enable;
+        };
+    };
+
+    pinmux_flexcomm0_lpi2c: flexcomm0_lpi2c {
+        group0 {
+            pinmux = <FC0_P1_PIO0_17>,          /* DEBUG RX (SDA) */
+                     <FC0_P0_PIO0_16>;          /* DEBUG TX (SCL) */
+            drive-strength = "low";
+            slew-rate = "fast";
+            input-enable;
+            bias-pull-up;
+            drive-open-drain;
+        };
+    };
+
+    pinmux_gpios_1: gpios_1 {
+        group0 {
+            pinmux = <ISPMODE_N_PIO0_6>;        /* ISPMODE N */
+            drive-strength = "low";
+            bias-pull-up;
+            slew-rate = "fast";
+            input-enable;
+        };
+    };
+
+    pinmux_swd: swd {
+        group0 {
+            pinmux = <SWDIO_PIO0_0>,            /* SWDIO */
+                     <SWCLK_PIO0_1>,            /* SWCLK */
+                     <SWO_PIO0_2>;              /* SWO */
+            drive-strength = "low";     
+            slew-rate = "fast";         
+        };
+    };
+
+    pinmux_lpadc0: lpadc0 {                     /* ADC0_0 is pin ANA_0 (P3) which is PHA Isns. However the MCUX tool lists that as the pins only function  */
+        group0 {                                /* ADC0_3 is pin ANA_6 (U2) which is VBUS Vsns. However the MCUX tool lists that as the pins only function  */
+            pinmux = <ADC0_A4_PIO4_2>,          /* PHA Vsns */
+				     <ADC0_A5_PIO4_12>,         /* PHB Vsns */
+				     <ADC0_A6_PIO4_16>,         /* PHC Vsns */
+				     <ADC0_A1_PIO4_15>,         /* PHB Isns */
+				     <ADC0_A2_PIO4_23>;         /* PHC Isns */
+            drive-strength = "low";
+            slew-rate = "fast";
+        };
+    };
+
+    pinmux_lpadc1: lpadc1 {
+        group0 {
+            pinmux = <ADC1_A12_PIO1_12>,        /* Thermistor Aux */
+            		 <ADC1_A13_PIO1_13>,        /* Thermistor Phase A */
+				     <ADC1_A14_PIO1_14>,        /* Thermistor Phase B */
+                     <ADC1_A15_PIO1_15>;        /* Thermistor Phase C */
+            drive-strength = "low";
+            slew-rate = "fast";
+        };
+    };
+
+    pinmux_led: green_led {
+        group0 {
+            pinmux = <PIO3_0>;                  /* Heartbeat LED */
+            drive-strength = "low";
+            slew-rate = "fast";
+        };
+    };
+
+    pinmux_xtal48m: xtal48m {
+        group0 {
+            pinmux = <XTAL48M_PIO1_30>,         /* XTAL */
+                     <EXTAL48M_PIO1_31>;        /* EXTAL */  
+            drive-strength = "low";            
+            slew-rate = "fast";               
+        };
+    };
+};
