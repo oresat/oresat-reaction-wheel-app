@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 PowerRippleResults.py
 
@@ -70,6 +69,12 @@ STRATEGY_INPUTS = {
 }
 
 STRATEGY_ORDER = ["Trapezoidal", "Sinusoidal", "FOC"]
+
+STRATEGY_COLORS = {
+    "Trapezoidal": "#1f77b4",   # blue
+    "Sinusoidal":  "#ff7f0e",   # orange
+    "FOC":         "#2ca02c",   # green
+}
 
 
 # =============================================================================
@@ -862,20 +867,39 @@ def aggregate_timeseries(processed_ts: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     temp = processed_ts.copy()
-    temp["time_relative_ms"] = np.round(temp["host_time_s"] * 1000.0).astype(int)
+
+    # Normalize each experimental trial to its own start time before combining
+    # repeated runs. This prevents host-side start-time offsets from shifting
+    # otherwise equivalent experiment profiles.
+    temp["time_relative_s"] = (
+        pd.to_numeric(temp["host_time_s"], errors="coerce")
+        - temp.groupby("run_id")["host_time_s"].transform("min")
+    )
+    temp = temp[np.isfinite(temp["time_relative_s"])].copy()
+    temp["time_relative_ms"] = np.round(temp["time_relative_s"] * 1000.0).astype(int)
+
+    # Reduce every run to one value per millisecond first. The final standard
+    # deviation is therefore computed across independent experimental trials,
+    # rather than across a mixture of repeated samples and trials.
+    per_run = (
+        temp.groupby(["strategy", "run_id", "time_relative_ms"], as_index=False)
+        .agg(
+            p_dc_run_mean_W=("p_dc_in_calc_W", finite_mean),
+            speed_command_run_mean_rpm=("speed_command_rpm", finite_mean),
+            omega_run_mean_rpm=("omega_rpm", finite_mean),
+        )
+    )
 
     rows = []
-    for (strategy, ms), g in temp.groupby(["strategy", "time_relative_ms"]):
-        pdc = pd.to_numeric(g["p_dc_in_calc_W"], errors="coerce")
-
+    for (strategy, ms), g in per_run.groupby(["strategy", "time_relative_ms"]):
         rows.append({
             "strategy": strategy,
             "time_s": ms / 1000.0,
             "run_count": int(g["run_id"].nunique()),
-            "p_dc_mean_W": finite_mean(pdc),
-            "p_dc_std_W": finite_std(pdc),
-            "speed_command_mean_rpm": finite_mean(g["speed_command_rpm"]),
-            "omega_mean_rpm": finite_mean(g["omega_rpm"]),
+            "p_dc_mean_W": finite_mean(g["p_dc_run_mean_W"]),
+            "p_dc_std_W": finite_std(g["p_dc_run_mean_W"]),
+            "speed_command_mean_rpm": finite_mean(g["speed_command_run_mean_rpm"]),
+            "omega_mean_rpm": finite_mean(g["omega_run_mean_rpm"]),
         })
 
     return pd.DataFrame(rows).sort_values(
@@ -948,7 +972,8 @@ def plot_time_series(ts_agg, outdir, y_col, std_col, title, ylabel, stem, show_s
         x = x[order]
         y = y[order]
 
-        ax.plot(x, y, linewidth=1.8, label=strategy)
+        color = STRATEGY_COLORS.get(strategy)
+        ax.plot(x, y, linewidth=1.8, label=strategy, color=color)
         plotted = True
 
         if show_std and std_col in g.columns:
@@ -960,7 +985,8 @@ def plot_time_series(ts_agg, outdir, y_col, std_col, title, ylabel, stem, show_s
                     x[finite_band],
                     y[finite_band] - s[finite_band],
                     y[finite_band] + s[finite_band],
-                    alpha=0.12,
+                    alpha=0.16,
+                    color=color,
                 )
 
     if not plotted:
@@ -972,7 +998,7 @@ def plot_time_series(ts_agg, outdir, y_col, std_col, title, ylabel, stem, show_s
     save_figure(fig, outdir, stem)
 
 
-def plot_plateau_curve(agg, outdir, y_col, std_col, title, ylabel, stem, show_std):
+def plot_plateau_curve(agg, outdir, y_col, std_col, title, ylabel, stem, show_std, scale=1.0):
     if agg is None or agg.empty:
         print(f"[WARN] Skipping {stem}: no plateau data available.")
         return
@@ -1003,26 +1029,38 @@ def plot_plateau_curve(agg, outdir, y_col, std_col, title, ylabel, stem, show_st
             continue
 
         x = x[mask]
-        y = y[mask]
+        y = y[mask] * scale
 
         order = np.argsort(x)
         x = x[order]
         y = y[order]
-
-        ax.plot(x, y, linewidth=2.1, marker="o", markersize=3.0, label=strategy)
-        plotted = True
+        color = STRATEGY_COLORS.get(strategy)
 
         if show_std and std_col in g.columns:
             s_all = pd.to_numeric(g[std_col], errors="coerce").to_numpy(dtype=float)
-            s = s_all[mask][order]
-            finite_band = np.isfinite(s)
-            if np.any(finite_band):
-                ax.fill_between(
-                    x[finite_band],
-                    y[finite_band] - s[finite_band],
-                    y[finite_band] + s[finite_band],
-                    alpha=0.12,
+            s = s_all[mask][order] * scale
+            finite = np.isfinite(s)
+            if np.any(finite):
+                ax.errorbar(
+                    x[finite],
+                    y[finite],
+                    yerr=s[finite],
+                    linewidth=2.1,
+                    marker="o",
+                    markersize=3.0,
+                    capsize=3.0,
+                    elinewidth=1.0,
+                    label=strategy,
+                    color=color,
                 )
+                if np.any(~finite):
+                    ax.plot(x[~finite], y[~finite], linewidth=2.1, marker="o", markersize=3.0, color=color)
+            else:
+                ax.plot(x, y, linewidth=2.1, marker="o", markersize=3.0, label=strategy, color=color)
+        else:
+            ax.plot(x, y, linewidth=2.1, marker="o", markersize=3.0, label=strategy, color=color)
+
+        plotted = True
 
     if not plotted:
         plt.close(fig)
@@ -1050,7 +1088,8 @@ def plot_energy_bars(summary_agg, outdir):
     y = pd.to_numeric(df["energy_dc_in_J_mean"], errors="coerce").to_numpy(dtype=float)
     yerr = pd.to_numeric(df["energy_dc_in_J_std"], errors="coerce").to_numpy(dtype=float)
 
-    ax.bar(x, y, yerr=yerr, capsize=4)
+    colors = [STRATEGY_COLORS.get(strategy) for strategy in df["strategy"]]
+    ax.bar(x, y, yerr=yerr, capsize=4, color=colors, error_kw={"elinewidth": 1.0, "capthick": 1.0})
     ax.set_title("Total Experiment Energy Consumption")
     ax.set_xlabel("Commutation Strategy")
     ax.set_ylabel("Electrical Input Energy (J)")
@@ -1148,7 +1187,13 @@ def main():
     parser.add_argument("--zero-reference-max-rpm", type=float, default=DEFAULT_ZERO_REFERENCE_MAX_RPM)
 
     parser.add_argument("--phase-resistance-ohm", type=float, default=DEFAULT_PHASE_RESISTANCE_OHM)
-    parser.add_argument("--show-std", action="store_true")
+    parser.add_argument(
+        "--no-show-std",
+        dest="show_std",
+        action="store_false",
+        help="Disable the default ±1 standard-deviation uncertainty display.",
+    )
+    parser.set_defaults(show_std=True)
 
     args = parser.parse_args()
 
@@ -1261,9 +1306,10 @@ def main():
         y_col="torque_ripple_rms_Nm_mean",
         std_col="torque_ripple_rms_Nm_std",
         title="Measured Reaction-Torque RMS Variation",
-        ylabel="Reaction-Torque RMS Variation (N·m)",
+        ylabel="Reaction-Torque RMS Variation (µN·m)",
         stem="torque_ripple_rms_vs_rpm",
         show_std=args.show_std,
+        scale=1.0e6,
     )
 
     plot_plateau_curve(
@@ -1272,9 +1318,10 @@ def main():
         y_col="torque_ripple_robust_ptp_Nm_mean",
         std_col="torque_ripple_robust_ptp_Nm_std",
         title="Measured Reaction-Torque Robust Amplitude",
-        ylabel="95th–5th Percentile Reaction-Torque Span (N·m)",
+        ylabel="95th–5th Percentile Reaction-Torque Span (µN·m)",
         stem="torque_ripple_robust_ptp_vs_rpm",
         show_std=args.show_std,
+        scale=1.0e6,
     )
 
     write_outputs(

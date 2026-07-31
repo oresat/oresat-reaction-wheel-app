@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 DynamicResponseResults.py
 
@@ -61,7 +60,7 @@ DEFAULT_VELOCITY_MEAN_WINDOW_S = 0.05
 
 # Dynamic torque can legitimately change quickly, so these defaults are looser
 # than the torque-speed test.
-DEFAULT_MAX_TORQUE_SLEW_MNM_S = 500.0
+DEFAULT_MAX_TORQUE_SLEW_UNM_S = 500000.0
 DEFAULT_HAMPEL_WINDOW_S = 0.25
 DEFAULT_HAMPEL_N_SIGMA = 4.0
 DEFAULT_TORQUE_MEAN_WINDOW_S = 0.20
@@ -78,6 +77,12 @@ STRATEGY_INPUTS = {
 }
 
 STRATEGY_ORDER = ["Trapezoidal", "Sinusoidal", "FOC"]
+
+STRATEGY_COLORS = {
+    "Trapezoidal": "#1f77b4",
+    "Sinusoidal": "#ff7f0e",
+    "FOC": "#2ca02c",
+}
 
 POSITIVE = "positive"
 NEGATIVE = "negative"
@@ -172,15 +177,15 @@ def iqr(values) -> float:
     return float(q75 - q25)
 
 
-def reject_slew_spikes(values: pd.Series, time_s: pd.Series, max_slew_mnm_s: float) -> tuple[pd.Series, pd.Series]:
+def reject_slew_spikes(values: pd.Series, time_s: pd.Series, max_slew_unm_s: float) -> tuple[pd.Series, pd.Series]:
     y = pd.to_numeric(values, errors="coerce").astype(float).copy()
     t = pd.to_numeric(time_s, errors="coerce").astype(float)
     flags = pd.Series(False, index=y.index)
 
-    if not np.isfinite(max_slew_mnm_s) or max_slew_mnm_s <= 0:
+    if not np.isfinite(max_slew_unm_s) or max_slew_unm_s <= 0:
         return y, flags
 
-    max_slew_nm_s = max_slew_mnm_s / 1000.0
+    max_slew_nm_s = max_slew_unm_s / 1.0e6
 
     last_t = None
     last_y = None
@@ -247,7 +252,7 @@ def process_torque(df: pd.DataFrame, args) -> pd.DataFrame:
     slew, slew_flags = reject_slew_spikes(
         out["torque_raw_Nm"],
         out["host_time_s"],
-        args.max_torque_slew_mnm_s,
+        args.max_torque_slew_unm_s,
     )
 
     hampel, hampel_flags = hampel_filter(
@@ -444,7 +449,7 @@ def compute_metrics(win: pd.DataFrame, label: str, args) -> dict:
         "settling_band_percent": args.settling_band_percent,
         "settling_band_rpm": band,
         "peak_abs_torque_Nm": peak_abs_torque_nm,
-        "peak_abs_torque_mNm": peak_abs_torque_nm * 1000.0 if np.isfinite(peak_abs_torque_nm) else np.nan,
+        "peak_abs_torque_uNm": peak_abs_torque_nm * 1.0e6 if np.isfinite(peak_abs_torque_nm) else np.nan,
     }
 
 
@@ -524,8 +529,8 @@ def aggregate_timeseries(raw_ts: pd.DataFrame) -> pd.DataFrame:
             "command_mean_rpm": float(np.nanmean(g["speed_command_rpm"])),
             "torque_mean_Nm": float(np.nanmean(g["torque_filtered_Nm"])),
             "torque_std_Nm": float(np.nanstd(g["torque_filtered_Nm"], ddof=1)) if len(g) > 1 else 0.0,
-            "torque_mean_mNm": float(np.nanmean(g["torque_filtered_Nm"]) * 1000.0),
-            "torque_std_mNm": float((np.nanstd(g["torque_filtered_Nm"], ddof=1) if len(g) > 1 else 0.0) * 1000.0),
+            "torque_mean_uNm": float(np.nanmean(g["torque_filtered_Nm"]) * 1.0e6),
+            "torque_std_uNm": float((np.nanstd(g["torque_filtered_Nm"], ddof=1) if len(g) > 1 else 0.0) * 1.0e6),
         })
 
     return pd.DataFrame(rows).sort_values(["strategy", "step_label", "time_relative_s"]).reset_index(drop=True)
@@ -540,7 +545,7 @@ def summarize_metrics(metrics: pd.DataFrame) -> pd.DataFrame:
         "undershoot_percent",
         "settling_time_s",
         "settling_time_plot_s",
-        "peak_abs_torque_mNm",
+        "peak_abs_torque_uNm",
     ]
 
     for (strategy, label), g in metrics.groupby(["strategy", "step_label"]):
@@ -603,23 +608,50 @@ def plot_velocity(agg, raw, label, outdir, args):
     fig, ax = setup_axes(title, "Time After Step (s)", "Wheel Speed (RPM)")
 
     if args.show_run_traces:
-        for _, g in raw[raw["step_label"] == label].groupby(["strategy", "run_id"]):
-            ax.plot(g["time_relative_s"], g["omega_rpm"], linewidth=0.6, alpha=0.18)
+        for (strategy, _), g in raw[raw["step_label"] == label].groupby(["strategy", "run_id"]):
+            color = STRATEGY_COLORS.get(strategy)
+            ax.plot(
+                g["time_relative_s"],
+                g["omega_rpm"],
+                linewidth=0.6,
+                alpha=0.18,
+                color=color,
+            )
 
+    command_plotted = False
     for strategy, g in iter_strategy_groups(agg[agg["step_label"] == label]):
         x = g["time_relative_s"].to_numpy(dtype=float)
         y = g["omega_mean_rpm"].to_numpy(dtype=float)
         cmd = g["command_mean_rpm"].to_numpy(dtype=float)
+        color = STRATEGY_COLORS.get(strategy)
 
-        ax.plot(x, y, linewidth=2.1, label=strategy)
-        ax.plot(x, cmd, linewidth=1.0, linestyle="--", alpha=0.55)
+        ax.plot(x, y, linewidth=2.2, label=strategy, color=color)
+
+        if not command_plotted:
+            ax.plot(
+                x,
+                cmd,
+                linewidth=1.0,
+                linestyle="--",
+                alpha=0.65,
+                color="black",
+                label="Command",
+            )
+            command_plotted = True
 
         if not args.skip_std_band:
             s = g["omega_std_rpm"].to_numpy(dtype=float)
-            ax.fill_between(x, y - s, y + s, alpha=0.12)
+            ax.fill_between(
+                x,
+                y - s,
+                y + s,
+                alpha=0.15,
+                color=color,
+                linewidth=0.0,
+            )
 
-    ax.axvline(0.0, linewidth=0.8, alpha=0.6)
-    ax.legend()
+    ax.axvline(0.0, linewidth=0.8, alpha=0.6, color="black")
+    ax.legend(title="Commutation Strategy")
     save_figure(fig, outdir, stem)
 
 
@@ -627,25 +659,40 @@ def plot_torque(agg, raw, label, outdir, args):
     title = "Reaction Torque During Positive Step" if label == POSITIVE else "Reaction Torque During Negative Step"
     stem = "dynamic_positive_step_torque" if label == POSITIVE else "dynamic_negative_step_torque"
 
-    fig, ax = setup_axes(title, "Time After Step (s)", "Reaction Torque (mN·m)")
+    fig, ax = setup_axes(title, "Time After Step (s)", "Reaction Torque (µN·m)")
 
     if args.show_run_traces:
-        for _, g in raw[raw["step_label"] == label].groupby(["strategy", "run_id"]):
-            ax.plot(g["time_relative_s"], g["torque_filtered_Nm"] * 1000.0, linewidth=0.6, alpha=0.18)
+        for (strategy, _), g in raw[raw["step_label"] == label].groupby(["strategy", "run_id"]):
+            color = STRATEGY_COLORS.get(strategy)
+            ax.plot(
+                g["time_relative_s"],
+                g["torque_filtered_Nm"] * 1.0e6,
+                linewidth=0.6,
+                alpha=0.18,
+                color=color,
+            )
 
     for strategy, g in iter_strategy_groups(agg[agg["step_label"] == label]):
         x = g["time_relative_s"].to_numpy(dtype=float)
-        y = g["torque_mean_mNm"].to_numpy(dtype=float)
+        y = g["torque_mean_uNm"].to_numpy(dtype=float)
+        color = STRATEGY_COLORS.get(strategy)
 
-        ax.plot(x, y, linewidth=2.1, label=strategy)
+        ax.plot(x, y, linewidth=2.2, label=strategy, color=color)
 
         if not args.skip_std_band:
-            s = g["torque_std_mNm"].to_numpy(dtype=float)
-            ax.fill_between(x, y - s, y + s, alpha=0.12)
+            s = g["torque_std_uNm"].to_numpy(dtype=float)
+            ax.fill_between(
+                x,
+                y - s,
+                y + s,
+                alpha=0.15,
+                color=color,
+                linewidth=0.0,
+            )
 
-    ax.axvline(0.0, linewidth=0.8, alpha=0.6)
-    ax.axhline(0.0, linewidth=0.8, alpha=0.5)
-    ax.legend()
+    ax.axvline(0.0, linewidth=0.8, alpha=0.6, color="black")
+    ax.axhline(0.0, linewidth=0.8, alpha=0.5, color="black")
+    ax.legend(title="Commutation Strategy")
     save_figure(fig, outdir, stem)
 
 
@@ -676,7 +723,8 @@ def plot_metric(summary, label, metric_base, title, ylabel, outdir, stem, dns=Fa
     y = pd.to_numeric(g[mean_col], errors="coerce").to_numpy(dtype=float)
     yerr = pd.to_numeric(g[std_col], errors="coerce").to_numpy(dtype=float) if std_col in g.columns else None
 
-    ax.bar(x, y, yerr=yerr, capsize=4)
+    bar_colors = [STRATEGY_COLORS.get(strategy) for strategy in g["strategy"]]
+    ax.bar(x, y, yerr=yerr, capsize=4, color=bar_colors)
     ax.set_title(title)
     ax.set_ylabel(ylabel)
     ax.set_xlabel("Commutation Strategy")
@@ -717,7 +765,7 @@ def settings_table(args):
         ("settling_hold_s", args.settling_hold_s),
         ("velocity_mean_window_s", args.velocity_mean_window_s),
         ("torque_filter_enabled", not args.no_torque_filter),
-        ("max_torque_slew_mnm_s", args.max_torque_slew_mnm_s),
+        ("max_torque_slew_unm_s", args.max_torque_slew_unm_s),
         ("hampel_window_s", args.hampel_window_s),
         ("hampel_n_sigma", args.hampel_n_sigma),
         ("torque_mean_window_s", args.torque_mean_window_s),
@@ -725,6 +773,7 @@ def settings_table(args):
         ("positive_high_rpm", args.positive_high_rpm),
         ("negative_high_rpm", args.negative_high_rpm),
         ("negative_low_rpm", args.negative_low_rpm),
+        ("show_standard_deviation", not args.skip_std_band),
     ], columns=["setting", "value"])
 
 
@@ -745,7 +794,7 @@ def main():
     parser.add_argument("--velocity-mean-window-s", type=float, default=DEFAULT_VELOCITY_MEAN_WINDOW_S)
 
     parser.add_argument("--no-torque-filter", action="store_true")
-    parser.add_argument("--max-torque-slew-mnm-s", type=float, default=DEFAULT_MAX_TORQUE_SLEW_MNM_S)
+    parser.add_argument("--max-torque-slew-unm-s", type=float, default=DEFAULT_MAX_TORQUE_SLEW_UNM_S)
     parser.add_argument("--hampel-window-s", type=float, default=DEFAULT_HAMPEL_WINDOW_S)
     parser.add_argument("--hampel-n-sigma", type=float, default=DEFAULT_HAMPEL_N_SIGMA)
     parser.add_argument("--torque-mean-window-s", type=float, default=DEFAULT_TORQUE_MEAN_WINDOW_S)

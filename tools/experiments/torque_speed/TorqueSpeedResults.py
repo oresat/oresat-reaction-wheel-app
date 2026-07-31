@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 TorqueSpeedResults.py
 
@@ -68,8 +67,8 @@ Important flags:
     --final-bin-smooth-window
         Final smoothing across aggregate RPM bins.
 
-    --show-std
-        Show +/- one standard deviation band.
+    --no-show-std
+        Disable the default +/- one standard deviation bands.
 
     --skip-normalized
         Skip normalized torque-speed plot.
@@ -625,37 +624,88 @@ def prepare_plot_data(aggregate: pd.DataFrame, plot_column: str) -> pd.DataFrame
 
 
 def plot_measured_torque_speed(df: pd.DataFrame, outdir: Path, show_std: bool, signed_torque: bool):
-    ylabel = "Reaction Torque (N·m)" if signed_torque else "Reaction Torque Magnitude (N·m)"
+    # Values are stored in N·m, but the measured torque levels are most readable
+    # and consistent with the thesis tables when displayed in mN·m.
+    ylabel = "Reaction Torque (mN·m)" if signed_torque else "Reaction Torque Magnitude (mN·m)"
     fig, ax = setup_axes("Measured Torque-Speed Characteristic", "Wheel Speed (RPM)", ylabel)
+
     for strategy, g in iter_strategy_groups(df):
         x = g["speed_bin_center_rpm"].to_numpy(dtype=float)
-        y = g["torque_plot_Nm"].to_numpy(dtype=float)
-        ax.plot(x, y, linewidth=2.2, marker="o", markersize=3.0, label=strategy, color=STRATEGY_COLORS[strategy])
+        y = 1000.0 * g["torque_plot_Nm"].to_numpy(dtype=float)
+        color = STRATEGY_COLORS[strategy]
+
+        ax.plot(
+            x,
+            y,
+            linewidth=2.2,
+            marker="o",
+            markersize=3.0,
+            label=strategy,
+            color=color,
+        )
+
         if show_std and "torque_std_Nm" in g.columns:
-            s = pd.to_numeric(g["torque_std_Nm"], errors="coerce").to_numpy(dtype=float)
-            ax.fill_between(x, y - s, y + s, alpha=0.15)
+            std = 1000.0 * pd.to_numeric(
+                g["torque_std_Nm"], errors="coerce"
+            ).to_numpy(dtype=float)
+            ax.fill_between(
+                x,
+                y - std,
+                y + std,
+                color=color,
+                alpha=0.15,
+                linewidth=0.0,
+            )
+
     if signed_torque:
         ax.axhline(0.0, linewidth=0.8, alpha=0.5)
-    ax.legend()
+
+    ax.legend(title="Commutation Strategy")
     save_figure(fig, outdir, "torque_speed_curves")
 
 
 def plot_normalized_torque_speed(df: pd.DataFrame, outdir: Path, show_std: bool, signed_torque: bool):
     ylabel = "Normalized Reaction Torque" if signed_torque else "Normalized Torque Magnitude"
     fig, ax = setup_axes("Normalized Torque-Speed Characteristic", "Wheel Speed (RPM)", ylabel)
+
     for strategy, g in iter_strategy_groups(df):
         x = g["speed_bin_center_rpm"].to_numpy(dtype=float)
         y = g["torque_plot_Nm"].to_numpy(dtype=float)
         peak = np.nanmax(np.abs(y))
+
         if not np.isfinite(peak) or peak <= 0.0:
             continue
-        ax.plot(x, y / peak, linewidth=2.2, marker="o", markersize=3.0, label=strategy, color=STRATEGY_COLORS[strategy])
+
+        color = STRATEGY_COLORS[strategy]
+        y_normalized = y / peak
+
+        ax.plot(
+            x,
+            y_normalized,
+            linewidth=2.2,
+            marker="o",
+            markersize=3.0,
+            label=strategy,
+            color=color,
+        )
+
         if show_std and "torque_std_Nm" in g.columns:
-            s = pd.to_numeric(g["torque_std_Nm"], errors="coerce").to_numpy(dtype=float)
-            ax.fill_between(x, (y - s) / peak, (y + s) / peak, alpha=0.15)
+            std = pd.to_numeric(
+                g["torque_std_Nm"], errors="coerce"
+            ).to_numpy(dtype=float) / peak
+            ax.fill_between(
+                x,
+                y_normalized - std,
+                y_normalized + std,
+                color=color,
+                alpha=0.15,
+                linewidth=0.0,
+            )
+
     if signed_torque:
         ax.axhline(0.0, linewidth=0.8, alpha=0.5)
-    ax.legend()
+
+    ax.legend(title="Commutation Strategy")
     save_figure(fig, outdir, "torque_speed_normalized")
 
 
@@ -871,8 +921,15 @@ def plot_speed_vs_time(
         )
 
         if show_std:
-            s = g["omega_std_rpm"].to_numpy(dtype=float)
-            ax.fill_between(x, y - s, y + s, alpha=0.15)
+            std = g["omega_std_rpm"].to_numpy(dtype=float)
+            ax.fill_between(
+                x,
+                y - std,
+                y + std,
+                color=STRATEGY_COLORS[strategy],
+                alpha=0.15,
+                linewidth=0.0,
+            )
 
         command = pd.to_numeric(
             g["speed_command_mean_rpm"],
@@ -946,6 +1003,7 @@ def processing_settings_table(args) -> pd.DataFrame:
         ("final_bin_smoothing_enabled", not args.no_final_bin_smoothing),
         ("final_bin_smooth_window", args.final_bin_smooth_window),
         ("plot_column", args.plot_column),
+        ("show_standard_deviation", not args.no_show_std),
     ]
     return pd.DataFrame(rows, columns=["setting", "value"])
 
@@ -1000,7 +1058,11 @@ def main():
     parser.add_argument("--mean-window-s", type=float, default=DEFAULT_MEAN_WINDOW_S)
     parser.add_argument("--final-bin-smooth-window", type=int, default=DEFAULT_FINAL_BIN_SMOOTH_WINDOW)
     parser.add_argument("--no-final-bin-smoothing", action="store_true")
-    parser.add_argument("--show-std", action="store_true")
+    parser.add_argument(
+        "--no-show-std",
+        action="store_true",
+        help="Disable the default +/- one-standard-deviation bands.",
+    )
     parser.add_argument("--skip-normalized", action="store_true")
     parser.add_argument("--plot-column", default=DEFAULT_PLOT_COLUMN)
     args = parser.parse_args()
@@ -1048,7 +1110,7 @@ def main():
         raw_speed=speed_time_raw,
         aggregate_speed=speed_time_aggregate,
         outdir=outdir,
-        show_std=args.show_std,
+        show_std=not args.no_show_std,
     )
 
     if not speed_time_raw.empty:
@@ -1062,9 +1124,9 @@ def main():
             index=False,
         )
 
-    plot_measured_torque_speed(plot_df, outdir, args.show_std, args.signed_torque)
+    plot_measured_torque_speed(plot_df, outdir, not args.no_show_std, args.signed_torque)
     if not args.skip_normalized:
-        plot_normalized_torque_speed(plot_df, outdir, args.show_std, args.signed_torque)
+        plot_normalized_torque_speed(plot_df, outdir, not args.no_show_std, args.signed_torque)
 
     plot_summary = make_plot_summary(plot_df)
     settings = processing_settings_table(args)
